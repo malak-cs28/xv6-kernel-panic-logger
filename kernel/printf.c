@@ -18,6 +18,65 @@
 volatile int panicking = 0; // printing a panic message
 volatile int panicked = 0; // spinning forever at end of a panic
 
+#define LOG_BUF_SIZE 1024
+
+static char panic_log_buffer[LOG_BUF_SIZE];
+static int panic_log_index = 0;
+static int panic_log_full = 0;
+
+static void
+logputc(char c)
+{
+  panic_log_buffer[panic_log_index] = c;
+  panic_log_index = (panic_log_index + 1) % LOG_BUF_SIZE;
+
+  if(panic_log_index == 0)
+    panic_log_full = 1;
+}
+
+static void
+rawputc(int c)
+{
+  consputc(c);
+}
+
+static void
+logged_consputc(int c)
+{
+  logputc(c);
+  rawputc(c);
+}
+
+#define consputc(c) logged_consputc(c)
+
+static void
+rawprint(char *s)
+{
+  while(*s)
+    rawputc(*s++);
+}
+
+static void
+print_panic_logs(void)
+{
+  int i;
+
+  rawprint("\n--- Kernel Circular Log Buffer ---\n");
+
+  if(panic_log_full){
+    for(i = panic_log_index; i < LOG_BUF_SIZE; i++)
+      rawputc(panic_log_buffer[i]);
+
+    for(i = 0; i < panic_log_index; i++)
+      rawputc(panic_log_buffer[i]);
+  } else {
+    for(i = 0; i < panic_log_index; i++)
+      rawputc(panic_log_buffer[i]);
+  }
+
+  rawprint("\n--- End Kernel Log Buffer ---\n");
+}
+
 // lock to avoid interleaving concurrent printf's.
 static struct {
   struct spinlock lock;
@@ -29,9 +88,7 @@ static void
 printint(long long xx, int base, int sign){
   char buf[20];
   int i;
-  unsigned long long x;
-
-  if(sign && (sign = (xx < 0)))
+  unsigned long long x; if(sign && (sign = (xx < 0)))
     x = -xx;
   else
     x = xx;
@@ -90,7 +147,7 @@ printf(char *fmt, ...)
       i += 2;
     } else if(c0 == 'u'){
       printint(va_arg(ap, uint32), 10, 0);
-    } else if(c0 == 'l' && c1 == 'u'){
+ } else if(c0 == 'l' && c1 == 'u'){
       printint(va_arg(ap, uint64), 10, 0);
       i += 1;
     } else if(c0 == 'l' && c1 == 'l' && c2 == 'u'){
@@ -119,7 +176,7 @@ printf(char *fmt, ...)
       break;
     } else {
       // Print unknown % sequence to draw attention.
-      consputc('%');
+  consputc('%');
       consputc(c0);
     }
 
@@ -141,7 +198,7 @@ panic(char *s)
   printf("panic logger: collecting crash information\n");
 
   // print_crash_context(s);
-  // print_panic_logs();
+  print_panic_logs();
 
   printf("panic logger: done\n");
 
