@@ -3,7 +3,7 @@
 //
 
 #include <stdarg.h>
-
+#include "crashcontext.h"
 #include "types.h"
 #include "param.h"
 #include "spinlock.h"
@@ -136,16 +136,12 @@ void
 panic(char *s)
 {
   panicking = 1;
+  printf("panic: ");
+  printf("%s\n", s);
 
-  printf("panic: %s\n", s);
-  printf("panic logger: collecting crash information\n");
+  print_crash_context(s);
 
-  // print_crash_context(s);
-  // print_panic_logs();
-
-  printf("panic logger: done\n");
-
-  panicked = 1; // freeze uart output from other CPUs
+  panicked = 1;
   for(;;)
     ;
 }
