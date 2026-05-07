@@ -26,8 +26,7 @@ static struct {
 static char digits[] = "0123456789abcdef";
 
 static void
-printint(long long xx, int base, int sign)
-{
+printint(long long xx, int base, int sign){
   char buf[20];
   int i;
   unsigned long long x;
@@ -137,13 +136,19 @@ void
 panic(char *s)
 {
   panicking = 1;
-  printf("panic: ");
-  printf("%s\n", s);
+
+  printf("panic: %s\n", s);
+  printf("panic logger: collecting crash information\n");
+
+  // print_crash_context(s);
+  // print_panic_logs();
+
+  printf("panic logger: done\n");
+
   panicked = 1; // freeze uart output from other CPUs
   for(;;)
     ;
 }
-
 void
 printfinit(void)
 {
