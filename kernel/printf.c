@@ -136,12 +136,18 @@ void
 panic(char *s)
 {
   panicking = 1;
-  printf("panic: ");
-  printf("%s\n", s);
+
+  printf("panic: %s\n", s);
+  printf("panic logger: collecting crash information\n");
 
   print_crash_context(s);
 
-  panicked = 1;
+  // Member 2 log buffer will be called here
+  // print_panic_logs();
+
+  printf("panic logger: done\n");
+
+  panicked = 1; // freeze uart output from other CPUs
   for(;;)
     ;
 }
