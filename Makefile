@@ -199,14 +199,7 @@ UPROGS=\
         $U/_trial\
         $U/_triall\
 	$U/_lab5task\
-
-ifeq ($(LAB),util)
-UPROGS += \
-	$U/_sleep\
-	$U/_sixfive\
-	$U/_find
-endif
-### ENDIF
+        $U/_panic_test\
 
 
 ifeq ($(LAB),syscall)
