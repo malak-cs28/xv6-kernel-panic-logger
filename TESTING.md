@@ -7,8 +7,7 @@
 
 A temporary panic was inserted into the kernel boot sequence using:
 
-panic("member4 test panic");
-
+panic("test panic from is booting");
 ### Expected Output
 
 The kernel panic output should display:
