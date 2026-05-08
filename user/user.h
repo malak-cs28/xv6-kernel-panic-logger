@@ -24,7 +24,7 @@ int getpid(void);
 char* sys_sbrk(int,int);
 int pause(int);
 int uptime(void);
-
+int panic_test(void);
 // ulib.c
 int stat(const char*, struct stat*);
 char* strcpy(char*, const char*);
