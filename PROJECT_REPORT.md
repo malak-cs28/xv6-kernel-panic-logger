@@ -1,391 +1,619 @@
-# Kernel Panic Logger - Final Project Report
+# xv6 Kernel Panic Logger
 
-## 1. Project Title
+## Operating Systems Project Report
 
-Kernel Panic Logger - Add log buffers and crash context information for panic handling.
+---
 
-## 2. Project Overview
+# Team Information
 
-This project modifies the xv6 operating system to improve kernel panic handling.
+## Project Title
 
-In the original xv6 system, when a kernel panic happens, the system prints a simple panic message and stops execution. This behavior is useful, but it does not give enough debugging information about what happened before the crash or which process caused the crash.
+**Kernel Panic Logger — Add Log Buffers and Crash Context Information for Panic Handling**
 
-Our project improves the panic handling mechanism by adding a Kernel Panic Logger.
+---
 
-The improved panic logger provides:
+# Abstract
 
-- Panic reason
+Kernel panic is one of the most critical failures in an operating system.  
+When a kernel panic occurs, the operating system reaches a fatal state where safe execution can no longer continue.
+
+The original xv6 operating system provides only a minimal panic mechanism that prints a simple panic message before stopping execution. While functional, this behavior lacks useful debugging information needed to analyze the cause of kernel crashes.
+
+This project improves xv6 panic handling by implementing a lightweight **Kernel Panic Logger** capable of collecting and displaying crash context information and recent kernel logs before system shutdown.
+
+The implemented system introduces:
+
+- Enhanced panic reporting
 - Crash context information
-- Process ID
+- Process identification
+- Circular kernel log buffering
+- Improved debugging visibility
+- Panic testing support
+
+The final result is a significantly more informative kernel panic mechanism inspired by real-world operating system debugging systems.
+
+---
+
+# Table of Contents
+
+1. Introduction  
+2. Problem Statement  
+3. Project Objectives  
+4. Background Concepts  
+5. System Design  
+6. Implementation Details  
+7. Circular Log Buffer Design  
+8. Crash Context Collection  
+9. Panic Flow Architecture  
+10. Testing and Validation  
+11. Challenges Faced  
+12. Results  
+13. Educational Value  
+14. Conclusion  
+15. Repository  
+
+---
+
+# 1. Introduction
+
+Operating systems are responsible for managing hardware resources, processes, memory, file systems, and system execution.
+
+The kernel is the core component of the operating system and runs with full system privileges. Because of its critical role, any unrecoverable kernel error can cause the entire system to stop functioning.
+
+This situation is known as a **Kernel Panic**.
+
+In xv6, the default panic mechanism is implemented using:
+
+```c
+panic(char *s)
+```
+
+The original panic function simply prints a panic message and halts the CPU:
+
+```text
+panic: disk error
+```
+
+However, this output does not provide sufficient debugging information.
+
+The objective of this project is to improve kernel debugging capabilities by extending panic handling with logging and crash analysis support.
+
+---
+
+# 2. Problem Statement
+
+The default xv6 panic mechanism has several limitations:
+
+- Only prints a simple panic message
+- Does not show active process information
+- Does not provide debugging context
+- Does not preserve recent kernel activity
+- Makes crash analysis difficult
+
+As a result, identifying the cause of kernel failures becomes challenging.
+
+The system lacks visibility into:
+
+- Which process caused the crash
+- What the kernel was doing before failure
+- Recent kernel messages
+- Runtime crash context
+
+---
+
+# 3. Project Objectives
+
+The project aims to improve xv6 panic debugging by implementing:
+
+- Enhanced panic output
+- Panic reason reporting
+- Crash context information
+- Process ID reporting
+- Process name reporting
+- Circular kernel log buffering
+- Boot panic handling
+- Panic testing support
+
+The project also aims to simulate simplified versions of debugging mechanisms used in modern operating systems.
+
+---
+
+# 4. Background Concepts
+
+## 4.1 Kernel Panic
+
+A kernel panic is a fatal operating system error that occurs when the kernel reaches a state where continued execution is unsafe.
+
+Example:
+
+```c
+panic("disk error");
+```
+
+Once panic is triggered, the system halts execution.
+
+---
+
+## 4.2 Processes
+
+A process represents a running program.
+
+Examples in xv6 include:
+
+- init
+- sh
+- panic_test
+
+Each process has:
+
+- PID (Process ID)
 - Process name
-- Kernel circular log buffer
-- Clear panic output for debugging and testing
+- Execution state
 
-The goal of the project is to make xv6 panic output more useful for debugging while keeping the design simple, clear, and suitable for an operating systems course project.
+---
 
-## 3. Problem Statement
+## 4.3 System Calls
 
-Kernel panic is a serious system error where the operating system cannot safely continue execution.
+User programs cannot directly access kernel functions.
 
-The default xv6 panic function is limited because it mainly prints the panic reason only.
+Instead, they communicate with the kernel using **system calls**.
 
-This creates a problem during debugging because the developer may not know:
+Examples:
 
-- Which process caused the panic
-- What the process ID was
-- What happened before the crash
-- What kernel messages appeared recently
-- Whether the panic happened during boot or during normal process execution
+```c
+read()
+write()
+fork()
+```
 
-Because of this, understanding the cause of a crash becomes harder.
+The project introduces a testing syscall used to intentionally trigger panic events.
 
-## 4. Project Objectives
+---
 
-The main objectives of this project are:
+## 4.4 Circular Buffer
 
-1. Understand how xv6 handles kernel panic.
-2. Modify the panic function to show more useful information.
-3. Build a circular kernel log buffer.
-4. Store recent kernel messages.
-5. Print crash context during panic.
-6. Show the panic reason clearly.
-7. Show the process ID if a process exists.
-8. Show the process name if a process exists.
-9. Handle boot panic when no process exists.
-10. Test the implementation using forced panic scenarios.
-11. Document the final implementation and testing results.
+A circular buffer is a fixed-size memory structure that overwrites older data when the buffer becomes full.
 
-## 5. System and Tools Used
+Advantages:
 
-The project was implemented using:
+- Constant memory usage
+- Preserves recent logs
+- Lightweight implementation
+- Efficient kernel logging
 
-- Operating System: Ubuntu
-- Target Operating System: xv6-labs-2025
-- Architecture: RISC-V
-- Emulator: QEMU
-- Version Control: Git and GitHub
-- Repository: https://github.com/malak-cs28/xv6-kernel-panic-logger
+---
 
-## 6. Team Task Distribution
+# 5. System Design
 
-| Member | Task |
-|---|---|
-| Member 1 | Understand xv6 panic() and modify kernel/printf.c |
-| Member 2 | Build the circular log buffer |
-| Member 3 | Build crash context: PID, process name, panic reason |
-| Member 4 | Testing: force panic, screenshots, prove it works |
-| Member 5 | Documentation, presentation, Git organization, and final report |
+The modified panic system works as follows:
 
-## 7. Original xv6 Panic Behavior
+```text
+panic()
+   ↓
+print panic reason
+   ↓
+collect crash context
+   ↓
+print process information
+   ↓
+print kernel logs
+   ↓
+halt system
+```
 
-In the original xv6 system, the panic function prints a panic message and stops the kernel.
+The logger intercepts kernel messages and stores them inside a circular log buffer.
 
-The output is usually simple, for example:
+During panic handling, the stored logs are printed before system shutdown.
 
-    panic: test panic
+---
 
-This tells us that a panic happened, but it does not give enough information for debugging.
+# 6. Implementation Details
 
-The original behavior does not clearly show:
+## 6.1 Panic Handler Modification
 
-- The process ID
-- The process name
-- The crash context
-- Recent kernel logs
+The original xv6 panic handler was extended to include:
 
-## 8. Improved Panic Logger Design
+- Panic reason printing
+- Crash context collection
+- Kernel log printing
 
-Our solution improves the panic handler by adding a panic logger.
+Modified function:
 
-When panic happens, the new panic logger performs these steps:
+```c
+panic(char *s)
+```
 
-1. Print the panic reason.
-2. Start collecting crash information.
-3. Print crash context.
-4. Print process ID.
-5. Print process name.
-6. Print the kernel circular log buffer.
-7. Print an end marker for the log buffer.
-8. Finish panic logging.
+New behavior:
 
-The output becomes easier to understand and more useful for debugging.
+```text
+panic()
+↓
+collect debugging information
+↓
+print logs
+↓
+halt
+```
 
-## 9. Crash Context Information
+---
 
-Crash context means the important information collected at the time of the crash.
+## 6.2 Crash Context Collection
 
-In this project, crash context includes:
+Crash context information includes:
 
 - Panic reason
-- PID
-- Process name
+- Current process ID
+- Current process name
+
+The current process is obtained using:
+
+```c
+myproc()
+```
+
+Example:
+
+```c
+struct proc *p = myproc();
+```
+
+Process information:
+
+```c
+p->pid
+p->name
+```
+
+---
+
+## 6.3 Circular Log Buffer
+
+A fixed-size circular buffer was implemented:
+
+```c
+static char panic_log_buffer[LOG_BUF_SIZE];
+```
+
+Example size:
+
+```c
+#define LOG_BUF_SIZE 1024
+```
+
+The logger continuously stores printed kernel characters.
+
+When the buffer becomes full:
+
+- Older logs are overwritten
+- New logs continue to be stored
+
+This ensures constant memory usage.
+
+---
+
+## 6.4 Character Logging
+
+Kernel characters are stored using:
+
+```c
+logputc(char c)
+```
+
+This function:
+
+- Stores characters in the log buffer
+- Prints characters to the console
+
+Every printed kernel character passes through the logger.
+
+---
+
+## 6.5 Kernel Log Printing
+
+The following function prints stored logs during panic handling:
+
+```c
+print_panic_logs()
+```
+
+The logger displays recent kernel messages before shutdown.
+
+---
+
+## 6.6 Boot Panic Handling
+
+Special handling was added for early boot panics where no user process exists.
 
 Example output:
 
-    ===== CRASH CONTEXT =====
-    Panic reason: init exiting
-    PID: 1
-    Process name: init
-    =========================
+```text
+PID: none
+Process name: kernel/boot
+```
 
-If the panic happens during boot and no process exists, the output shows:
+This prevents invalid process access during early kernel initialization.
 
-    PID: none
-    Process name: kernel/boot
+---
 
-This makes the logger safer because it does not assume that a process always exists.
+## 6.7 Panic Testing Syscall
 
-## 10. Kernel Circular Log Buffer
+A syscall-based panic test was implemented.
 
-A circular log buffer is a fixed-size buffer that stores recent kernel messages.
+User program:
 
-When the buffer becomes full, new messages overwrite old messages.
+```text
+panic_test
+```
 
-This design is useful because:
+Kernel behavior:
 
-- It avoids using unlimited memory.
-- It keeps the most recent kernel messages.
-- It helps debugging after a panic.
-- It is simple and suitable for kernel-level logging.
+```c
+panic("test panic from syscall");
+```
 
-During panic, the logger prints the buffer like this:
+This allows panic testing directly from user space.
 
-    --- Kernel Circular Log Buffer ---
-    xv6 kernel is booting
-    panic: test panic
-    panic logger: collecting crash information
-    --- End Kernel Log Buffer ---
+---
 
-## 11. Important Project Features
+# 7. Circular Log Buffer Design
 
-The final project includes the following features:
+The circular buffer stores the latest kernel logs using a rotating write position.
 
-### 11.1 Panic Reason
+Buffer behavior:
 
-The panic reason is printed clearly.
+```text
+New logs → overwrite oldest logs
+```
 
-Example:
+Advantages:
 
-    panic: test panic
-    Panic reason: test panic
+- Prevents unlimited memory growth
+- Keeps recent debugging history
+- Lightweight implementation
+- Efficient for kernel environments
 
-### 11.2 Process ID
+---
 
-If a process exists, the logger prints its PID.
+# 8. Crash Context Collection
 
-Example:
+Crash context provides information about the system state during panic.
 
-    PID: 1
+Collected information includes:
 
-### 11.3 Process Name
-
-If a process exists, the logger prints its name.
-
-Example:
-
-    Process name: init
-
-### 11.4 Boot Panic Handling
-
-If the panic happens during boot before a process exists, the logger prints:
-
-    PID: none
-    Process name: kernel/boot
-
-### 11.5 Kernel Log Buffer
-
-The logger prints recent kernel messages from the circular buffer.
-
-### 11.6 Normal Boot Still Works
-
-After removing test panic code, xv6 boots normally and reaches the shell.
-
-Example:
-
-    xv6 kernel is booting
-    hart 1 starting
-    hart 2 starting
-    init: starting sh
-    $
-
-## 12. Files Involved
-
-The implementation mainly involves the following parts of xv6:
-
-| File | Purpose |
+| Information | Description |
 |---|---|
-| kernel/printf.c | Panic output and panic logger integration |
-| kernel/log.c or related log file | Circular log buffer implementation |
-| kernel/crashcontext.c or related file | Crash context handling |
-| kernel/proc.c | Process information |
-| kernel/proc.h | Process structure |
-| Makefile | Build integration |
-| TESTING.md | Testing documentation |
-| screenshots/ | Screenshots for proof |
-| PROJECT_REPORT.md | Final report |
-| PRESENTATION_NOTES.md | Presentation notes |
-| README.md | Repository summary |
+| Panic Reason | Cause of the crash |
+| PID | Current process ID |
+| Process Name | Current running process |
 
-## 13. Testing and Validation
+Example:
 
-Testing was done by forcing different panic scenarios and checking the output.
+```text
+===== CRASH CONTEXT =====
+Panic reason: test panic
+PID: 4
+Process name: panic_test
+=========================
+```
 
-### Test 1: Manual Test Panic
+---
 
-A manual panic was triggered to check if the panic logger works.
+# 9. Panic Flow Architecture
 
-Expected result:
+## Original xv6 Panic Flow
 
-- Panic reason appears.
-- Panic logger starts.
-- Circular log buffer appears.
-- Panic logger finishes.
+```text
+panic()
+↓
+print message
+↓
+halt
+```
 
-Observed output:
+---
 
-    xv6 kernel is booting
+## Modified Panic Flow
 
-    panic: test panic
-    panic logger: collecting crash information
+```text
+panic()
+↓
+print panic reason
+↓
+collect crash context
+↓
+print process information
+↓
+print circular logs
+↓
+halt
+```
 
-    --- Kernel Circular Log Buffer ---
+The modified flow provides significantly more debugging visibility.
 
-    xv6 kernel is booting
-    panic: test panic
-    panic logger: collecting crash information
+---
 
-    --- End Kernel Log Buffer ---
-    panic logger: done
+# 10. Testing and Validation
 
-This proves that the circular log buffer is printed during panic.
+The following tests were performed:
 
-### Test 2: Normal Boot After Removing Test Panic
+## 10.1 Manual Panic Test
 
-After removing the forced test panic, xv6 was run again.
+Forced kernel panic using:
 
-Observed output:
+```c
+panic("test panic");
+```
 
-    xv6 kernel is booting
-    hart 1 starting
-    hart 2 starting
-    init: starting sh
-    $
+Verified:
 
-This proves that the system still boots normally.
+- Panic reason printing
+- Crash context output
+- Log buffer output
 
-### Test 3: Init Exiting Panic
+---
 
-Inside xv6, the following command was used:
+## 10.2 Syscall Panic Test
 
-    kill 1
+Triggered panic using user-space syscall.
 
-Observed output:
+Verified:
 
-    panic: init exiting
+- User-to-kernel syscall functionality
+- Process name reporting
+- PID reporting
 
-    ===== CRASH CONTEXT =====
-    Panic reason: init exiting
-    PID: 1
-    Process name: init
-    =========================
+---
 
-This proves that the logger can detect process context and print the PID and process name.
+## 10.3 Boot Panic Test
 
-### Test 4: Boot Panic
+Forced panic during boot stage.
 
-A boot panic was triggered to test the case where no process exists yet.
+Verified:
 
-Observed output:
+- Boot panic handling
+- Kernel/boot process detection
 
-    panic: test panic from is booting
+---
 
-    panic logger: collecting crash information
-    ===== CRASH CONTEXT =====
-    Panic reason: test panic from is booting
-    PID: none
-    Process name: kernel/boot
-    =========================
+## 10.4 Normal Boot Test
 
-This proves that the logger handles boot panic safely.
+Removed forced panic and verified normal xv6 startup:
 
-## 14. Screenshots Evidence
+```text
+xv6 kernel is booting
+hart 1 starting
+hart 2 starting
+init: starting sh
+$
+```
 
-Screenshots were taken to prove that the implementation works.
+---
 
-The screenshots show:
+## 10.5 Init Exiting Test
 
-1. Successful build using make clean and make qemu.
-2. Manual panic output.
-3. Kernel circular log buffer output.
-4. Normal boot after removing test panic.
-5. Init exiting panic using kill 1.
-6. Boot panic showing PID none and process name kernel/boot.
+Executed:
 
-These screenshots should be stored in the repository inside the screenshots folder.
+```bash
+kill 1
+```
 
-## 15. Git Workflow
+Verified kernel panic handling behavior.
 
-The team used Git and GitHub to organize the project.
+---
 
-Task 5 was completed using a separate branch:
+# 11. Challenges Faced
 
-    member5-documentation
+Several challenges were encountered during implementation.
 
-The recommended Git commands are:
+## Boot-Time Process Handling
 
-    git checkout main
-    git pull origin main
-    git checkout -b member5-documentation
-    git add PROJECT_REPORT.md PRESENTATION_NOTES.md README.md
-    git commit -m "Add final documentation and presentation notes"
-    git push origin member5-documentation
+During early boot stages:
 
-After pushing, a pull request should be opened from:
+```c
+myproc()
+```
 
-    member5-documentation
+may return null because no process exists yet.
 
-to:
+This required special handling for boot panic scenarios.
 
-    main
+---
 
-## 16. Design Quality
+## Circular Buffer Overwrite Logic
 
-The design is clear and maintainable because:
+Implementing proper wrap-around behavior required careful index management.
 
-- Panic logging is focused on panic handling.
-- Crash context is printed in a readable format.
-- The circular buffer avoids unlimited memory usage.
-- The output is easy to test and verify.
-- The design handles both process panic and boot panic.
-- The project keeps the original xv6 behavior while improving debugging output.
+---
 
-## 17. Limitations
+## Kernel Logging Integration
 
-The current implementation has some limitations:
+The logger needed to intercept kernel printing without breaking normal console output.
 
-- The log buffer has a limited size.
-- Logs are not saved permanently after reboot.
-- Logs are mainly printed only during panic.
-- There are no timestamps in the log output.
-- The system still stops after panic, which is expected kernel behavior.
+---
 
-## 18. Future Improvements
+## Merge Conflicts
 
-Possible future improvements include:
+Multiple team members modified overlapping kernel files, especially:
 
-- Save panic logs to disk.
-- Add timestamps to log messages.
-- Add CPU or hart ID to the crash context.
-- Add syscall-based panic testing.
-- Add log levels such as INFO, WARNING, and ERROR.
-- Add automated tests for panic scenarios.
+```text
+kernel/printf.c
+```
 
-## 19. Conclusion
+This resulted in Git merge conflicts that required manual resolution.
 
-This project improves xv6 panic handling by adding a Kernel Panic Logger.
+---
 
-The new logger prints the panic reason, crash context, process ID, process name, and recent kernel messages from a circular log buffer.
+# 12. Results
 
-Testing proves that the implementation works during manual panic, init process panic, boot panic, and normal boot after removing test panic.
+The final implementation successfully provides:
 
-The project demonstrates important operating system concepts such as kernel panic handling, debugging, process context, kernel logging, circular buffers, and Git-based collaboration.
+- Enhanced panic diagnostics
+- Crash context reporting
+- Circular kernel logging
+- Improved debugging visibility
+- Boot panic support
+- Stable normal boot operation
+
+Example panic output:
+
+```text
+panic: test panic
+panic logger: collecting crash information
+
+===== CRASH CONTEXT =====
+Panic reason: test panic
+PID: none
+Process name: kernel/boot
+=========================
+
+--- Kernel Circular Log Buffer ---
+xv6 kernel is booting
+panic: test panic
+panic logger: collecting crash information
+--- End Kernel Log Buffer ---
+
+panic logger: done
+```
+
+---
+
+# 13. Educational Value
+
+This project demonstrates several important operating system concepts:
+
+- Kernel panic handling
+- Low-level debugging
+- Crash diagnostics
+- Circular buffer implementation
+- Kernel logging systems
+- Process management
+- System calls
+- Kernel development workflow
+- Git collaboration in systems projects
+
+The project also introduces debugging concepts inspired by real operating systems such as Linux.
+
+---
+
+# 14. Conclusion
+
+The xv6 Kernel Panic Logger significantly improves the original panic handling mechanism by adding debugging visibility and crash analysis support.
+
+Instead of printing only a simple panic message, the modified system now provides:
+
+- Panic reason reporting
+- Process identification
+- Crash context information
+- Recent kernel logs
+
+The implementation demonstrates practical operating system debugging techniques while maintaining lightweight kernel behavior.
+
+The project successfully transforms xv6 panic handling into a more informative and educational debugging system.
+
+---
+
+# 15. Repository
+
+Project Repository:
+
+https://github.com/malak-cs28/xv6-kernel-panic-logger
